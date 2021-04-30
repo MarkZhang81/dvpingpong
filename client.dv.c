@@ -34,7 +34,13 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 	if (ret)
 		return ret;
 
-	INFO("Send done, now recving reply...\n");
+	ret = pp_dv_poll_cq(&ppdv->cq, num_post);
+	if (ret < 0) {
+		ERR("poll_cq failed %d, ne = %d\n", ret, num_post);
+		return ret;
+	}
+
+	INFO("Send done (num_post %d), now recving reply...\n", num_post);
 	return 0;
 }
 

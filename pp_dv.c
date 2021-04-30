@@ -9,6 +9,7 @@
 #include "util/util.h"
 
 #define DVDBG printf
+#define DVDBG2(fmt, args...)
 
 #define PP_ACCESS_FALGS (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ)
 
@@ -17,10 +18,9 @@ int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
 	uint32_t in[DEVX_ST_SZ_DW(create_cq_in)] = {};
 	uint32_t out[DEVX_ST_SZ_DW(create_cq_out)] = {};
 	void *cqc = DEVX_ADDR_OF(create_cq_in, in, cq_context);
-	//int log_cq_size = PP_MAX_LOG_CQ_SIZE;
-	//struct mlx5_cqe64 *cqe;
+	struct mlx5_cqe64 *cqe;
 	uint32_t eqn;
-	int ret;
+	int i, ret;
 
 	ret = mlx5dv_devx_query_eqn(ppc->ibctx, 0, &eqn);
 	if (ret) {
@@ -102,6 +102,14 @@ int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
 		cqe->op_own = MLX5_CQE_INVALID << 4;
 	}
 */
+	dvcq->cons_index = 0;
+	dvcq->cqe_sz = 64;
+	dvcq->ncqe = 1 << PP_MAX_LOG_CQ_SIZE;
+	for (i = 0; i < dvcq->ncqe; i++) {
+		cqe = pp_dv_get_cqe(dvcq, i);
+		cqe->op_own = MLX5_CQE_INVALID << 4;
+	}
+
 	return 0;
 
 fail_obj_create:
@@ -220,8 +228,7 @@ static int calc_wq_size(struct pp_dv_qp *dvqp, const struct ibv_qp_cap *cap)
 }
 
 int pp_create_qp_dv(const struct pp_context *ppc,
-		    const struct pp_dv_cq *dvcq,
-		    struct pp_dv_qp *dvqp)
+		    struct pp_dv_cq *dvcq, struct pp_dv_qp *dvqp)
 {
 	uint32_t in[DEVX_ST_SZ_DW(create_qp_in)] = {};
 	uint32_t out[DEVX_ST_SZ_DW(create_qp_out)] = {};
@@ -316,6 +323,8 @@ int pp_create_qp_dv(const struct pp_context *ppc,
 	dvqp->sq.cur_post = 0;
 	dvqp->rq.head = 0;
 	dvqp->rq.tail = 0;
+
+	dvcq->dvqp = dvqp;
 
 	INFO("dv: QP %d created; sq.wqe_cnt %d(log_sq_size %d), rq.wqe_cnt %d(log_rq_size %d), rq_wqe_shift %d\n",
 	     dvqp->qpn, dvqp->sq.wqe_cnt, ilog32(dvqp->sq.wqe_cnt - 1),
@@ -534,9 +543,6 @@ static void post_send_one(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
 		size += sizeof(struct mlx5_wqe_raddr_seg) / 16;
 	}
 
-//	printf("=DEBUG:%s:%d: curpost %d idx %d ctrl %p seg %p qend %p\n", __func__, __LINE__,
-//	       dvqp->sq.cur_post, idx, ctrl, seg, dvqp->sq.qend);
-
 	if (unlikely(seg == qend))
 		seg = dvqp->sq_start;
 	mlx5dv_set_data_seg(seg, ppc->mrbuflen, ppc->mr[id]->lkey, (uint64_t)ppc->mrbuf[id]);
@@ -572,4 +578,101 @@ int pp_dv_post_send(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
 		post_send_one(ppc, dvqp, peer, i, opcode, send_flags);
 
 	return 0;
+}
+
+void *pp_dv_get_cqe(struct pp_dv_cq *dvcq, int n)
+{
+	return dvcq->buf + n * dvcq->cqe_sz;
+}
+
+static void *get_sw_cqe(struct pp_dv_cq *dvcq, int n)
+{
+	void *cqe = pp_dv_get_cqe(dvcq, n & (dvcq->ncqe - 1));
+	struct mlx5_cqe64 *cqe64;
+
+	cqe64 = (dvcq->cqe_sz == 64) ? cqe : cqe + 64;
+
+	DVDBG2("cqbuf %p n %d cqe_sz %d ncqe %d cqe64 %p owner 0x%x, opcde 0x%x final %d\n",
+	       dvcq->buf, n, dvcq->cqe_sz, dvcq->ncqe, cqe64,
+	       mlx5dv_get_cqe_owner(cqe64), mlx5dv_get_cqe_opcode(cqe64),
+	       !((cqe64->op_own & MLX5_CQE_OWNER_MASK) ^ !!(n & dvcq->ncqe)));
+
+	if (likely(mlx5dv_get_cqe_opcode(cqe64) != MLX5_CQE_INVALID) &&
+	    !((cqe64->op_own & MLX5_CQE_OWNER_MASK) ^ !!(n & dvcq->ncqe)))
+		return cqe64;
+	else
+		return NULL;
+}
+
+static int parse_cqe(struct pp_dv_cq *dvcq, struct mlx5_cqe64 *cqe64)
+{
+#if 0
+	uint16_t wqe_ctr;
+	uint8_t opcode;
+	int idx;
+
+	wqe_ctr = be16toh(cqe64->wqe_counter);
+	opcode = mlx5dv_get_cqe_opcode(cqe64);
+
+	if (opcode == MLX5_CQE_REQ_ERR) {
+		idx = wqe_ctr & (dvcq->dvqp->sq.wqe_cnt - 1);
+		dvcq->qp->sq.tail = dvcq->qp->sq.wqe_head[idx] + 1;
+	} else if (opcode == MLX5_CQE_RESP_ERR) {
+		++dvcq->qp->sq.tail;
+	} else {
+		idx = wqe_ctr & (dvcq->dvqp->sq.wqe_cnt - 1);
+		//dvcq->qp->sq.tail = dvcq->qp->sq.wqe_head[idx] + 1;
+		return CQ_OK;
+	}
+
+	return CQ_POLL_ERR;
+#endif
+	return CQ_OK;
+}
+
+static int get_next_cqe(struct pp_dv_cq *dvcq,
+			struct mlx5_cqe64 **pcqe64)
+{
+	struct mlx5_cqe64 *cqe64;
+
+	cqe64 = get_sw_cqe(dvcq, dvcq->cons_index);
+	if (!cqe64)
+		return CQ_EMPTY;
+
+	++dvcq->cons_index;
+	/*
+         * Make sure we read CQ entry contents after we've checked the
+         * ownership bit.
+         */
+	udma_from_device_barrier();
+
+	*pcqe64 = cqe64;
+	return CQ_OK;
+}
+
+static int poll_one_cq(struct pp_dv_cq *dvcq)
+{
+	struct mlx5_cqe64 *cqe64;
+	int err;
+
+	err = get_next_cqe(dvcq, &cqe64);
+	if (err == CQ_EMPTY)
+		return err;
+
+	return parse_cqe(dvcq, cqe64);
+
+	return 0;
+}
+
+int pp_dv_poll_cq(struct pp_dv_cq *dvcq, uint32_t ne)
+{
+	int npolled, err = 0;
+
+	for (npolled = 0; npolled < ne; npolled ++) {
+		err = poll_one_cq(dvcq);
+		if (err != CQ_OK)
+			break;
+	}
+	dvcq->db[MLX5_CQ_SET_CI] = htobe32(dvcq->cons_index & 0xffffff);
+	return err == CQ_POLL_ERR ? err : npolled;
 }
