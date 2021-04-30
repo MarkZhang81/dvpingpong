@@ -17,9 +17,9 @@ static struct pp_exchange_info server = {};
 
 static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 {
+	int num_post = PP_MAX_WR, num_comp, i, ret;
 	//int opcode = MLX5_OPCODE_RDMA_WRITE_IMM;
 	int opcode = MLX5_OPCODE_SEND_IMM;
-	int num_post = PP_MAX_WR, i, ret;
 
 	DBG("Pause 1sec before post send, opcode %d\n", opcode);
 	sleep(1);
@@ -31,16 +31,47 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 
 	ret = pp_dv_post_send(&ppdv->ppc, &ppdv->qp, &server, num_post,
 			      opcode, IBV_SEND_SIGNALED);
-	if (ret)
-		return ret;
-
-	ret = pp_dv_poll_cq(&ppdv->cq, num_post);
-	if (ret < 0) {
-		ERR("poll_cq failed %d, ne = %d\n", ret, num_post);
+	if (ret) {
+		ERR("pp_dv_post_send failed\n");
 		return ret;
 	}
 
+	num_comp = 0;
+	while (num_comp < num_post) {
+		ret = pp_dv_poll_cq(&ppdv->cq, 1);
+		if (ret == CQ_POLL_ERR) {
+			ERR("poll_cq(send) failed %d, %d/%d\n", ret, num_comp, num_post);
+			return ret;
+		}
+		if (ret > 0)
+			num_comp++;
+	}
+
+	/* Reset the buffer so that we can check it the received data is expected */
+	for (i = 0; i < num_post; i++)
+		memset(ppdv->ppc.mrbuf[i], 0, ppdv->ppc.mrbuflen);
+
 	INFO("Send done (num_post %d), now recving reply...\n", num_post);
+	ret = pp_dv_post_recv(&ppdv->ppc, &ppdv->qp, num_post);
+	if (ret) {
+		ERR("pp_dv_post_recv failed\n");
+		return ret;
+	}
+
+	num_comp = 0;
+	while (num_comp < num_post) {
+		ret = pp_dv_poll_cq(&ppdv->cq, 1);
+		if (ret == CQ_POLL_ERR) {
+			ERR("poll_cq(recv) failed %d, %d/%d\n", ret, num_comp, num_post);
+			return ret;
+		}
+		if (ret > 0) {
+			dump_msg_short(num_comp, &ppdv->ppc);
+			num_comp++;
+		}
+	}
+
+	INFO("Client(dv) traffic test done\n");
 	return 0;
 }
 

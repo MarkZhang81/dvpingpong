@@ -91,17 +91,6 @@ int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
 	INFO("dv: CQ %d created, eqn %d, db@%p, buf@%p\n",
 	     dvcq->cqn, eqn, dvcq->db, dvcq->buf);
 
-/*
-  FIXME
-	pp->drcq.cqe_sz = 64;
-	pp->drcq.cons_index = 0;
-	pp->drcq.ncqe = 1 << log_cq_size;
-	pp->drcq.qp = &pp->drqp;
-	for (i = 0; i < 1 << log_cq_size; i++) {
-		cqe = dr_cq_get_cqe(&pp->drcq, i);
-		cqe->op_own = MLX5_CQE_INVALID << 4;
-	}
-*/
 	dvcq->cons_index = 0;
 	dvcq->cqe_sz = 64;
 	dvcq->ncqe = 1 << PP_MAX_LOG_CQ_SIZE;
@@ -645,6 +634,7 @@ static int get_next_cqe(struct pp_dv_cq *dvcq,
          * ownership bit.
          */
 	udma_from_device_barrier();
+	usleep(100);		/* FIXME: Why need usleep here? */
 
 	*pcqe64 = cqe64;
 	return CQ_OK;
@@ -675,4 +665,31 @@ int pp_dv_poll_cq(struct pp_dv_cq *dvcq, uint32_t ne)
 	}
 	dvcq->db[MLX5_CQ_SET_CI] = htobe32(dvcq->cons_index & 0xffffff);
 	return err == CQ_POLL_ERR ? err : npolled;
+}
+
+/* Ref.: rdma-core/providers/mlx5/qp.c::mlx5_post_wq_recv() */
+int pp_dv_post_recv(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
+		    unsigned int num_post)
+{
+	int ind = dvqp->rq.head & (dvqp->rq.wqe_cnt - 1), nreq;
+	struct mlx5_wqe_data_seg *seg;
+
+	for (nreq = 0; nreq < num_post; nreq++) {
+		//seg = get_wq_recv_wqe(dvqp, ind);
+		seg = dvqp->buf + dvqp->rq.offset + (ind << dvqp->rq.wqe_shift);
+		/* Signature is not supported */
+		mlx5dv_set_data_seg(seg, ppc->mrbuflen, ppc->mr[nreq]->lkey,
+				    (uint64_t)ppc->mrbuf[nreq]);
+		ind = (ind + 1) & (dvqp->rq.wqe_cnt - 1);
+	}
+
+	dvqp->rq.head += nreq;
+	/*
+	 * Make sure that descriptors are written before
+	 * doorbell record.
+	 */
+	udma_to_device_barrier();
+
+	dvqp->db[MLX5_RCV_DBR] = htobe32(dvqp->rq.head & 0xffff);
+	return 0;
 }

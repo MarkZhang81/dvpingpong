@@ -78,3 +78,5 @@ int pp_dv_post_send(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
 
 void *pp_dv_get_cqe(struct pp_dv_cq *dvcq, int n);
 int pp_dv_poll_cq(struct pp_dv_cq *dvcq, uint32_t ne);
+int pp_dv_post_recv(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
+		    unsigned int num_post);

@@ -75,15 +75,5 @@ static inline void mem_string(unsigned char *p, ssize_t len)
 }
 
 /* To dump a long string like this: "0: 0BCDEFGHIJKLMNOP ... nopqrstuvwxyABC" */
-static inline void dump_msg_short(int index, struct pp_context *ppc)
-{
-	ppc->mrbuf[index][ppc->mrbuflen - 1] = '\0';
-	if (ppc->mrbuflen <= 32) {
-		printf("    %2d: %s\n", index, ppc->mrbuf[index]);
-	} else {
-		ppc->mrbuf[index][16] = '\0';
-		printf("    %2d (len = 0x%lx): %s...%s\n", index, ppc->mrbuflen,
-		       ppc->mrbuf[index], ppc->mrbuf[index] + ppc->mrbuflen - 16);
-	}
-}
+void dump_msg_short(int index, struct pp_context *ppc);
 #endif	/* _PP_COMMON_H */

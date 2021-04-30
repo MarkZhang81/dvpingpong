@@ -187,7 +187,6 @@ static void print_gid(struct pp_context *ppc, unsigned char *p)
 	       p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
 }
 
-
 extern int sock_client(const char *server_ip, char *sendbuf, int send_buflen,
 		       char *recvbuf, int recv_buflen);
 extern int sock_server(char *sendbuf, int send_buflen, char *recvbuf, int recv_buflen);
@@ -257,4 +256,17 @@ int pp_exchange_info(struct pp_context *ppc, int my_sgid_idx,
 	printf("\n");
 
 	return 0;
+}
+
+/* To dump a long string like this: "0: 0BCDEFGHIJKLMNOP ... nopqrstuvwxyABC" */
+void dump_msg_short(int index, struct pp_context *ppc)
+{
+	ppc->mrbuf[index][ppc->mrbuflen - 1] = '\0';
+	if (ppc->mrbuflen <= 32) {
+		printf("    %2d: %s\n", index, ppc->mrbuf[index]);
+	} else {
+		ppc->mrbuf[index][16] = '\0';
+		printf("    %2d (len = 0x%lx): %s...%s\n", index, ppc->mrbuflen,
+		       ppc->mrbuf[index], ppc->mrbuf[index] + ppc->mrbuflen - 16);
+	}
 }
