@@ -2,9 +2,9 @@
 #include "pp_dv.h"
 
 
-#define SERVER_IP "192.168.0.122"
+#define SERVER_IP "192.168.60.205"
 
-static char ibv_devname[100] = "rocep8s0f0";
+static char ibv_devname[100] = "ibp59s0f0";
 static int client_sgid_idx = 3;
 
 //#define PP_DV_OPCODE_CLIENT IBV_WR_RDMA_WRITE_WITH_IMM /* IBV_WR_SEND_WITH_IMM */

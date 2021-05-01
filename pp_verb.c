@@ -90,6 +90,7 @@ int pp_move2rts_verb(struct pp_context *ppc, struct ibv_qp *qp,
 		attr.ah_attr.grh.dgid = peer->gid;
 	} else {
 		attr.ah_attr.dlid = peer->lid;
+		printf("=DEBUG:%s:%d: attr.ah_attr.dlid %d\n", __func__, __LINE__, attr.ah_attr.dlid);
 	}
 
 	ret = ibv_modify_qp(qp, &attr,

@@ -1,7 +1,7 @@
 #include "pp_common.h"
 #include "pp_verb.h"
 
-static char ibv_devname[100] = "rocep8s0f0";
+static char ibv_devname[100] = "mlx5_2";
 static int server_sgid_idx = 3;
 
 static struct pp_verb_ctx ppv_ctx;
@@ -63,6 +63,7 @@ int main(int argc, char *argv[])
 		memset(ibv_devname, 0, sizeof(ibv_devname));
 		strcpy(ibv_devname, argv[1]);
 	}
+	INFO("IB device %s\n", ibv_devname);
 
 	ret = pp_ctx_init(&ppv_ctx.ppc, ibv_devname, 0, NULL);
 	if (ret)

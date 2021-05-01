@@ -380,8 +380,8 @@ static int dvqp_rst2init(const struct pp_context *ppc, struct pp_dv_qp *dvqp)
 }
 
 /* FIXME: For RoCE currently dmac is hard-coded */
-//static uint8_t dmac[6] = {0x7c, 0xfe, 0x90, 0xcb, 0x74, 0x6e};
-static uint8_t dmac[6] = {0xec, 0x0d, 0x9a, 0x8a, 0x28, 0x2a};
+static uint8_t dmac[6] = {0x7c, 0xfe, 0x90, 0xcb, 0x74, 0x6e};
+//static uint8_t dmac[6] = {0xec, 0x0d, 0x9a, 0x8a, 0x28, 0x2a};
 static int dvqp_init2rtr(const struct pp_context *ppc,
 			 const struct pp_exchange_info *peer,
 			 int my_sgid_idx, struct pp_dv_qp *dvqp)
