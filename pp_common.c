@@ -241,6 +241,7 @@ int pp_exchange_info(struct pp_context *ppc, int my_sgid_idx,
 		return ret;
 	}
 
+	remote->lid = be32toh(r->lid);
 	remote->qpn = be32toh(r->qpn);
 	remote->psn = be32toh(r->psn);
 	for (i = 0; i < PP_MAX_WR; i++) {
