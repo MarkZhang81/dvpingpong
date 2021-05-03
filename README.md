@@ -5,12 +5,14 @@
     mlx5dv APIs over VFIO.
 
 # How to run
+<pre>
 * In server side run: ./server [ib_devname]
 * In client side run: ./client.verb [ib_devname] # Client based on verbs API
   or:
   ./client.dv [ib_devname] # Client based on dv API
   or:
   ./client.vfio [pci_name] # Client side based on vfio driver
+</pre>
 
 # Note
 + For server there's only 1 version, which is based on verbs APIs;
@@ -31,6 +33,8 @@
 # FIXME
 * Somehow have to do "usleep(100)" when ring the send doorbell and receive cqe. Check post_send_db() and get_next_cqe(). The udma_from_device_barrier() doesn't work?
 
+<pre>
 --
 Mark Zhang markzhang@nvidia.com
+</pre>
 
