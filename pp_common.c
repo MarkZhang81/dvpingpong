@@ -125,7 +125,7 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 		goto fail_alloc_pd;
 	}
 
-	pp->mrbuflen = 1 << 12;	/* FIXME: Somehow it doesn't work with "1 << 13" (or greater) with vfio, need to debug */
+	pp->mrbuflen = 1 << 20;	/* FIXME: Somehow it doesn't work with "1 << 13" (or greater) with vfio, need to debug */
 	for (i = 0; i < PP_MAX_WR; i++) {
 		pp->mrbuf[i] = memalign(sysconf(_SC_PAGESIZE), pp->mrbuflen);
 		if (!pp->mrbuf[i]) {

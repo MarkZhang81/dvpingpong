@@ -5,7 +5,7 @@
 #include "pp_dv.h"
 #include "pp_vfio.h"
 
-#define SERVER_IP "192.168.60.205"
+#define SERVER_IP "10.237.1.205"
 
 char *vfio_pci_name = "0000:3b:00.1"; /* env(VFIO_PCI_NAME) */
 
