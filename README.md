@@ -1,37 +1,36 @@
-A simple example to demonstrate how to write a rdma app over:
-1. verbs APIs,
-2. mlx5dv APIs, and
-3. mlx5dv APIs over VFIO.
+**A simple example to demonstrate how to write a rdma app over:**
 
-How to run:
+    verbs APIs,
+    mlx5dv APIs, and
+    mlx5dv APIs over VFIO.
 
-In server side run: ./server [ib_devname]
-In client side run:
-    ./client.verb [ib_devname]    # Client based on verbs API
-or:
-    ./client.dv [ib_devname]      # Client based on dv API
-or (TODO):
-    ./client.vfio [pci_name]      # Client side based on vfio driver
+# How to run
+* In server side run: ./server [ib_devname]
+* In client side run: ./client.verb [ib_devname] # Client based on verbs API
+  or:
+  ./client.dv [ib_devname] # Client based on dv API
+  or:
+  ./client.vfio [pci_name] # Client side based on vfio driver
 
-Note:
-1. For server there's only 1 version, which is based on verbs APIs;
-2. These are hardcoded:
-   client side:
-     SERVER_IP, client_sgid_idx (in client.*.c);
-     dmac (for RoCE; in pp_dv.c);
-     max_wr_num (number of wr posted; in client.*.c; Default is PP_MAX_WR);
-   server side:
-     server_sgid_idx;
-     max_wr_num(max same as the value in client side, need to improve);
+# Note
++ For server there's only 1 version, which is based on verbs APIs;
++ These are hardcoded:
+  client side:
+  + SERVER_IP
+  + client_sgid_idx (in client..c);
+  + dmac (for RoCE; in pp_dv.c);
+  + max_wr_num (number of wr posted; in client..c; Default is PP_MAX_WR);
 
-   For max_wr_num not have to be changed; e.g., for debugging you may want to change it to 1.
+  server side:
+  + server_sgid_idx; max_wr_num(max same as the value in client side, need to improve);
 
-3. There's no wq overflow check.
+  For max_wr_num not have to be changed; e.g., for debugging you may want to change it to 1.
 
-FIXME:
-Somehow have to do "usleep(100)" when ring the send doorbell and receive cqe.
-Check post_send_db() and get_next_cqe().
-The udma_from_device_barrier() doesn't work?
++ There's no wq overflow check.
+
+# FIXME
+* Somehow have to do "usleep(100)" when ring the send doorbell and receive cqe. Check post_send_db() and get_next_cqe(). The udma_from_device_barrier() doesn't work?
 
 --
-Mark Zhang <markzhang@nvidia.com>
+Mark Zhang markzhang@nvidia.com
+
