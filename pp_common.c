@@ -125,7 +125,7 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 		goto fail_alloc_pd;
 	}
 
-	pp->mrbuflen = 1 << 20;	/* FIXME: Somehow it doesn't work with "1 << 13" (or greater) with vfio, need to debug */
+	pp->mrbuflen = 1 << 20;
 	for (i = 0; i < PP_MAX_WR; i++) {
 		pp->mrbuf[i] = memalign(sysconf(_SC_PAGESIZE), pp->mrbuflen);
 		if (!pp->mrbuf[i]) {
@@ -196,7 +196,7 @@ int pp_exchange_info(struct pp_context *ppc, int my_sgid_idx,
 		     int my_qp_num, uint32_t my_psn,
 		     struct pp_exchange_info *remote, const char *sip)
 {
-	char sendbuf[1024] = {}, recvbuf[1024] = {};
+	char sendbuf[4096] = {}, recvbuf[4096] = {};
 	struct pp_exchange_info *local = (struct pp_exchange_info *)sendbuf;
 	struct pp_exchange_info *r = (struct pp_exchange_info *)recvbuf;
 	unsigned char *p;
@@ -227,7 +227,7 @@ int pp_exchange_info(struct pp_context *ppc, int my_sgid_idx,
 	p = local->gid.raw;
 	INFO("Local(%s): port_num %d, lid %d, psn 0x%x, qpn 0x%x(%d), addr %p, mrkey 0x%x\n",
 	     sip ? "Client" : "Server", ppc->port_num, ppc->port_attr.lid, my_psn,
-	     my_qp_num, my_qp_num, ppc->mrbuf[0], ppc->mr[0]->lkey);
+	     my_qp_num, my_qp_num, ppc->mrbuf[PP_MAX_WR - 1], ppc->mr[PP_MAX_WR - 1]->lkey);
 	print_gid(ppc, p);
 
 	if (sip)
@@ -252,7 +252,7 @@ int pp_exchange_info(struct pp_context *ppc, int my_sgid_idx,
 	p = remote->gid.raw;
 	INFO("Remote(%s): lid %d, psn 0x%x, qpn 0x%x(%d), addr %p, mrkey 0x%x\n",
 	     sip ? "Server" : "Client", remote->lid, remote->psn,
-	     remote->qpn, remote->qpn, remote->addr[i], remote->mrkey[0]);
+	     remote->qpn, remote->qpn, remote->addr[PP_MAX_WR - 1], remote->mrkey[PP_MAX_WR - 1]);
 	print_gid(ppc, p);
 	printf("\n");
 

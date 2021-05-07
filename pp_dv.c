@@ -22,6 +22,9 @@ int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
 	uint32_t eqn;
 	int i, ret;
 
+	dvcq->cqe_sz = 64;
+	dvcq->ncqe = 1 << PP_MAX_LOG_CQ_SIZE;
+
 	ret = mlx5dv_devx_query_eqn(ppc->ibctx, 0, &eqn);
 	if (ret) {
 		ERR("devx_query_eqn failed: %d, errno %d\n", ret, errno);
@@ -43,7 +46,8 @@ int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
 		goto fail;
 	}
 
-	int size = 4096 * 8;	/* FIXME: How to calculate it? (cq_size * cqe_size)? */
+	//int size = 4096 * 8;	/* FIXME: How to calculate it? (cq_size * cqe_size)? */
+	int size = roundup_pow_of_two(dvcq->cqe_sz * dvcq->ncqe);
 	dvcq->buflen = align(size, sysconf(_SC_PAGESIZE));
 	ret = posix_memalign(&dvcq->buf, sysconf(_SC_PAGESIZE), dvcq->buflen);
 	if (ret) {
@@ -69,7 +73,7 @@ int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
 
 	DEVX_SET64(cqc, cqc, log_page_size, 0); /* 12 - MLX5_ADAPTER_PAGE_SHIFT */
 	DEVX_SET64(cqc, cqc, page_offset, 0);
-	DEVX_SET(cqc, cqc, log_cq_size, 6);
+	DEVX_SET(cqc, cqc, log_cq_size, PP_MAX_LOG_CQ_SIZE);
 	DEVX_SET(cqc, cqc, cqe_sz, 0); /* BYTES_64 */
 
 	/* FIXME: Check these args */
@@ -92,8 +96,6 @@ int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
 	     dvcq->cqn, eqn, dvcq->db, dvcq->buf);
 
 	dvcq->cons_index = 0;
-	dvcq->cqe_sz = 64;
-	dvcq->ncqe = 1 << PP_MAX_LOG_CQ_SIZE;
 	for (i = 0; i < dvcq->ncqe; i++) {
 		cqe = pp_dv_get_cqe(dvcq, i);
 		cqe->op_own = MLX5_CQE_INVALID << 4;
@@ -498,9 +500,6 @@ static void post_send_db(struct pp_dv_qp *dvqp, int size, void *ctrl)
 
 	udma_to_device_barrier();
 	mmio_write64_be((uint8_t *)dvqp->uar->reg_addr, *(__be64 *)ctrl);
-
-	/* FIXME: Somehow it doesn't work without this usleep */
-	usleep(100);
 }
 
 static void post_send_one(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
@@ -634,7 +633,6 @@ static int get_next_cqe(struct pp_dv_cq *dvcq,
          * ownership bit.
          */
 	udma_from_device_barrier();
-	usleep(100);		/* FIXME: Why need usleep here? */
 
 	*pcqe64 = cqe64;
 	return CQ_OK;

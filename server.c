@@ -35,8 +35,8 @@ static int server_traffic_verb(struct pp_verb_ctx *ppv)
 		return ret;
 	}
 
-	sleep(1);
-	INFO("Now sending reply...\n");
+	sleep(2);
+	INFO("Now sending reply (%d)...\n", max_wr_num);
 	prepare_send_wr_verb(ppv, wrs, sglists, &client, max_wr_num,
 			     PP_SEND_WRID_SERVER, PP_VERB_OPCODE_SERVER, false);
 	ret = ibv_post_send(ppv->cqqp.qp, wrs, &bad_wrs);

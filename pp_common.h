@@ -25,7 +25,7 @@
 
 #define PORT_NUM 1
 
-#define PP_MAX_WR 16		/* Max outstanding send/recv wr */
+#define PP_MAX_WR 64		/* Max outstanding send/recv wr */
 
 #define PP_MAX_LOG_CQ_SIZE 8	/* 256 cqe */
 
