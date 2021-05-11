@@ -398,7 +398,7 @@ static int dvqp_init2rtr(const struct pp_context *ppc,
 	DEVX_SET(init2rtr_qp_in, in, qpn, dvqp->qpn);
 
 	DEVX_SET(qpc, qpc, mtu, IBV_MTU_1024);
-	DEVX_SET(qpc, qpc, log_msg_max, 20);
+	DEVX_SET(qpc, qpc, log_msg_max, 30);
 	DEVX_SET(qpc, qpc, remote_qpn, peer->qpn);
 	DEVX_SET(qpc, qpc, next_rcv_psn, peer->psn);
 

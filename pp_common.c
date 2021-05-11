@@ -125,7 +125,7 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 		goto fail_alloc_pd;
 	}
 
-	pp->mrbuflen = 1 << 20;
+	pp->mrbuflen = PP_DATA_BUF_LEN;
 	for (i = 0; i < PP_MAX_WR; i++) {
 		pp->mrbuf[i] = memalign(sysconf(_SC_PAGESIZE), pp->mrbuflen);
 		if (!pp->mrbuf[i]) {

@@ -30,9 +30,6 @@
 
 + There's no wq overflow check.
 
-# FIXME
-* Somehow have to do "usleep(100)" when ring the send doorbell and receive cqe. Check post_send_db() and get_next_cqe(). The udma_from_device_barrier() doesn't work?
-
 <pre>
 --
 Mark Zhang markzhang@nvidia.com

@@ -1,13 +1,14 @@
 #include "pp_common.h"
 #include "pp_verb.h"
 
-//#define SERVER_IP "10.237.1.205"
-#define SERVER_IP "192.168.60.205"
+#define SERVER_IP "10.237.1.205"
+//#define SERVER_IP "192.168.60.205"
 
 static char ibv_devname[100] = "ibp59s0f0";
 static int client_sgid_idx = 3;
 
-#define PP_VERB_OPCODE_CLIENT IBV_WR_RDMA_WRITE_WITH_IMM /* IBV_WR_SEND_WITH_IMM */
+#define PP_VERB_OPCODE_CLIENT IBV_WR_SEND_WITH_IMM
+//#define PP_VERB_OPCODE_CLIENT IBV_WR_RDMA_WRITE_WITH_IMM
 
 #define PP_SEND_WRID_CLIENT  0x1000
 #define PP_RECV_WRID_CLIENT  0x4000

@@ -2,7 +2,7 @@
 #include "pp_dv.h"
 
 
-#define SERVER_IP "192.168.60.205"
+#define SERVER_IP "10.237.1.205"
 
 static char ibv_devname[100] = "ibp59s0f0";
 static int client_sgid_idx = 3;
@@ -21,7 +21,8 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 	//int opcode = MLX5_OPCODE_RDMA_WRITE_IMM;
 	int opcode = MLX5_OPCODE_SEND_IMM;
 
-	DBG("Pause 1sec before post send, opcode %d\n", opcode);
+	DBG("Pause 1sec before post send, opcode %d num_post %d length 0x%lx..\n",
+	    opcode, num_post, ppdv->ppc.mrbuflen);
 	sleep(1);
 
 	for (i = 0; i < num_post; i++) {
