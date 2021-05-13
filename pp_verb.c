@@ -24,7 +24,9 @@ int pp_create_cq_qp_verb(const struct pp_context *ppctx,
 		.cap = ppctx->cap,
 
 		.qp_type = IBV_QPT_RC,
-		.comp_mask = IBV_QP_INIT_ATTR_PD,
+		.comp_mask = IBV_QP_INIT_ATTR_PD | IBV_QP_INIT_ATTR_SEND_OPS_FLAGS,
+		//.send_ops_flags = IBV_QP_EX_WITH_RDMA_WRITE | IBV_QP_EX_WITH_RDMA_WRITE_WITH_IMM | IBV_QP_EX_WITH_SEND | IBV_QP_EX_WITH_SEND_WITH_IMM,
+		.send_ops_flags = 0x1f,
 		.pd = ppctx->pd,
 	};
 	ppv->qp = ibv_create_qp_ex(ppctx->ibctx, &init_attr);
@@ -33,6 +35,7 @@ int pp_create_cq_qp_verb(const struct pp_context *ppctx,
 		ret = errno;
 		goto fail_create_qp;
 	}
+	ppv->qpx = ibv_qp_to_qp_ex(ppv->qp);
 
 	struct ibv_qp_attr attr = {
 		.qp_state = IBV_QPS_INIT,
@@ -211,6 +214,8 @@ int poll_cq_verb(struct pp_verb_ctx *ppv, int max_wr_num, bool for_recv)
 				    (int)wcs[i].wr_id);
 				return -1;
 			}
+			INFO("wc: id 0x%lx opcode 0x%x byte_len 0x%x wc_flags 0x%x imm_data 0x%x\n",
+			     wcs[i].wr_id, wcs[i].opcode, wcs[i].byte_len, wcs[i].wc_flags, be32toh(wcs[i].imm_data));
 		}
 		if (for_recv)
 			for (i = 0; i < cqn; i++)

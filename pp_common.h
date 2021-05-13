@@ -26,6 +26,7 @@
 #define PORT_NUM 1
 
 #define PP_MAX_WR 64		/* Max outstanding send/recv wr */
+//#define PP_NUM_SGE_PER_WQE  8
 
 #define PP_DATA_BUF_LEN ((1 << 20) + 63)
 

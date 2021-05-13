@@ -3,6 +3,7 @@
 struct pp_verb_cq_qp {
 	struct ibv_cq_ex *cq_ex;
 	struct ibv_qp *qp;
+	struct ibv_qp_ex *qpx;
 };
 
 struct pp_verb_ctx {
