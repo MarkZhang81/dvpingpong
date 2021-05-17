@@ -1,9 +1,12 @@
+#include <infiniband/mlx5dv.h>
+
 #include "pp_common.h"
 
 struct pp_verb_cq_qp {
 	struct ibv_cq_ex *cq_ex;
 	struct ibv_qp *qp;
 	struct ibv_qp_ex *qpx;
+	struct mlx5dv_qp_ex *mqpx;
 };
 
 struct pp_verb_ctx {

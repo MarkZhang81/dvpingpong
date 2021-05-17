@@ -3,6 +3,7 @@
 int pp_create_cq_qp_verb(const struct pp_context *ppctx,
 			 struct pp_verb_cq_qp *ppv)
 {
+	struct mlx5dv_qp_init_attr attr_dv = {};
 	int ret;
 
 	struct ibv_cq_init_attr_ex cq_init_attr_ex = {
@@ -29,13 +30,18 @@ int pp_create_cq_qp_verb(const struct pp_context *ppctx,
 		.send_ops_flags = 0x1f,
 		.pd = ppctx->pd,
 	};
-	ppv->qp = ibv_create_qp_ex(ppctx->ibctx, &init_attr);
+
+	attr_dv.comp_mask = MLX5DV_QP_INIT_ATTR_MASK_SEND_OPS_FLAGS;
+	attr_dv.send_ops_flags = MLX5DV_QP_EX_WITH_RAW_WQE;
+	//ppv->qp = ibv_create_qp_ex(ppctx->ibctx, &init_attr);
+	ppv->qp = mlx5dv_create_qp(ppctx->ibctx, &init_attr, &attr_dv);
 	if (!ppv->qp) {
-		ERR("ibv_create_qp_ex() failed");
+		ERR("ibv_create_qp_ex() failed\n");
 		ret = errno;
 		goto fail_create_qp;
 	}
 	ppv->qpx = ibv_qp_to_qp_ex(ppv->qp);
+	ppv->mqpx = mlx5dv_qp_ex_from_ibv_qp_ex(ppv->qpx);
 
 	struct ibv_qp_attr attr = {
 		.qp_state = IBV_QPS_INIT,

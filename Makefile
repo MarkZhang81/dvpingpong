@@ -1,8 +1,8 @@
 CC := gcc
 LD := gcc
-CFLAGS := -Wall -g -O0 -I.
+CFLAGS := -Wall -g -O0 -I ../upstream_rdma-core/build/include
 
-LIBS :=  -libverbs -lmlx5  -lpthread
+LIBS :=  -L ../upstream_rdma-core/build/lib -libverbs -lmlx5  -lpthread
 
 HEADERS := pp_common.h
 OBJS_VERB := sock.o pp_common.o pp_verb.o

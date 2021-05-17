@@ -36,7 +36,7 @@ static int server_traffic_verb(struct pp_verb_ctx *ppv)
 		return ret;
 	}
 
-	sleep(2);
+	sleep(1);
 	INFO("Now sending reply (%d)...\n", wr_num);
 	prepare_send_wr_verb(ppv, wrs, sglists, &client, wr_num,
 			     PP_SEND_WRID_SERVER, PP_VERB_OPCODE_SERVER, false);
