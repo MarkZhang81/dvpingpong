@@ -13,16 +13,15 @@ static struct pp_exchange_info client = {};
 #define PP_VERB_OPCODE_SERVER IBV_WR_RDMA_WRITE_WITH_IMM /* IBV_WR_SEND_WITH_IMM */
 
 
-static int server_traffic_verb(struct pp_verb_ctx *ppv)
+static int server_traffic_verb(struct pp_verb_ctx *ppv, int wr_num)
 {
 	struct ibv_send_wr wrs[PP_MAX_WR] = {}, *bad_wrs;
 	struct ibv_recv_wr wrr[PP_MAX_WR] = {}, *bad_wrr;
 	struct ibv_sge sglists[PP_MAX_WR] = {};
-	int wr_num = 3, ret;
-
+	int ret;
+#if 1
 	prepare_recv_wr_verb(ppv, wrr, sglists, wr_num, PP_RECV_WRID_SERVER);
 
-	INFO("Waiting for data...\n");
 	/* 1. Recv "ping" */
 	ret = ibv_post_recv(ppv->cqqp.qp, wrr, &bad_wrr);
 	if (ret) {
@@ -52,6 +51,43 @@ static int server_traffic_verb(struct pp_verb_ctx *ppv)
 		return ret;
 	}
 
+#else
+	int msgid = 0, ret;
+	while(1) {
+		prepare_recv_wr_verb(ppv, wrr, sglists, 1, PP_RECV_WRID_SERVER);
+
+		INFO("\nWaiting for msg %d...\n", msgid);
+		ret = ibv_post_recv(ppv->cqqp.qp, wrr, &bad_wrr);
+		if (ret) {
+			ERR("%d: ibv_post_send failed %d\n", msgid, ret);
+			return ret;
+		}
+
+		ret = poll_cq_verb(ppv, 1, true);
+		if (ret) {
+			ERR("poll_cq_verb failed\n");
+			return ret;
+		}
+		sleep(1);
+		INFO("Now sending reply...\n");
+		prepare_send_wr_verb(ppv, wrs, sglists, &client, 1,
+				     PP_SEND_WRID_SERVER, PP_VERB_OPCODE_SERVER, false);
+
+		ret = ibv_post_send(ppv->cqqp.qp, wrs, &bad_wrs);
+		if (ret) {
+			ERR("%d: ibv_post_send failed %d\n", msgid, ret);
+			return ret;
+		}
+
+		ret = poll_cq_verb(ppv, 1, false);
+		if (ret) {
+			ERR("poll_cq_verb failed\n");
+			return ret;
+		}
+
+		msgid++;
+	}
+#endif
 	INFO("Server traffic test done\n");
 	return 0;
 }
@@ -84,7 +120,18 @@ int main(int argc, char *argv[])
 	if (ret)
 		goto out_exchange;
 
-	ret = server_traffic_verb(&ppv_ctx);
+	/* To match the wrap-around test; Check client_traffic_verb()
+	 * Need to improve the server logic...
+	 */
+#if 0
+	ret = server_traffic_verb(&ppv_ctx, 3);
+	ret = server_traffic_verb(&ppv_ctx, 3);
+	ret = server_traffic_verb(&ppv_ctx, 3);
+	ret = server_traffic_verb(&ppv_ctx, 3);
+	ret = server_traffic_verb(&ppv_ctx, 2);
+#endif
+
+	ret = server_traffic_verb(&ppv_ctx, 3);
 
 out_exchange:
 	pp_destroy_cq_qp_verb(&ppv_ctx.cqqp);

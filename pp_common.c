@@ -93,11 +93,12 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 #endif
 	int ret, i;
 
-	pp->cap.max_send_wr = PP_MAX_WR;
+	//pp->cap.max_send_wr = PP_MAX_WR;
+	pp->cap.max_send_wr = 3;
 	pp->cap.max_recv_wr = PP_MAX_WR;
-	pp->cap.max_send_sge = 32;
-	pp->cap.max_recv_sge = 32;
-	pp->cap.max_inline_data = 64;
+	pp->cap.max_send_sge = 8;
+	pp->cap.max_recv_sge = 1;
+	pp->cap.max_inline_data = 0;
 
 	if (use_vfio) {
 		struct ibv_device *ibdev;
