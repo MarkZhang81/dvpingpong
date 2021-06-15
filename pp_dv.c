@@ -319,7 +319,7 @@ int pp_create_qp_dv(const struct pp_context *ppc,
 
 	INFO("dv: QP %d created; sq.wqe_cnt %d(log_sq_size %d), rq.wqe_cnt %d(log_rq_size %d), rq_wqe_shift %d\n",
 	     dvqp->qpn, dvqp->sq.wqe_cnt, ilog32(dvqp->sq.wqe_cnt - 1),
-	     dvqp->sq.wqe_cnt, ilog32(dvqp->rq.wqe_cnt - 1), dvqp->rq.wqe_shift);
+	     dvqp->rq.wqe_cnt, ilog32(dvqp->rq.wqe_cnt - 1), dvqp->rq.wqe_shift);
 
 	return 0;
 
