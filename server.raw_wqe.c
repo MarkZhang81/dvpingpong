@@ -102,7 +102,8 @@ int main(int argc, char *argv[])
 	}
 	INFO("IB device %s\n", ibv_devname);
 
-	ret = pp_ctx_init(&ppv_ctx.ppc, ibv_devname, 0, NULL);
+	ret = pp_ctx_init(&ppv_ctx.ppc, ibv_devname, 0, NULL,
+			  IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
 	if (ret)
 		return ret;
 

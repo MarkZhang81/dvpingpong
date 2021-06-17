@@ -32,7 +32,7 @@ int pp_create_cq_qp_verb(const struct pp_context *ppctx,
 	};
 
 	attr_dv.comp_mask = MLX5DV_QP_INIT_ATTR_MASK_SEND_OPS_FLAGS;
-	attr_dv.send_ops_flags = MLX5DV_QP_EX_WITH_RAW_WQE;
+	attr_dv.send_ops_flags = MLX5DV_QP_EX_WITH_RAW_WQE | MLX5DV_QP_EX_WITH_MKEY_CONFIGURE;;
 	//ppv->qp = ibv_create_qp_ex(ppctx->ibctx, &init_attr);
 	ppv->qp = mlx5dv_create_qp(ppctx->ibctx, &init_attr, &attr_dv);
 	if (!ppv->qp) {
@@ -215,8 +215,8 @@ int poll_cq_verb(struct pp_verb_ctx *ppv, int max_wr_num, bool for_recv)
 
 		for (i = 0; i < cqn; i++) {
 			if (wcs[i].status != IBV_WC_SUCCESS) {
-				ERR("Failed status %s(%x) for wr_id 0x%x\n",
-				    ibv_wc_status_str(wcs[i].status), wcs[i].status,
+				ERR("%d: Failed status %s(%x) for wr_id 0x%x\n",
+				    i, ibv_wc_status_str(wcs[i].status), wcs[i].status,
 				    (int)wcs[i].wr_id);
 				return -1;
 			}

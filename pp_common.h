@@ -60,7 +60,7 @@ struct pp_exchange_info {
 };
 
 int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
-		int use_vfio, const char *vfio_pci_name);
+		int use_vfio, const char *vfio_pci_name, int access_flags);
 void pp_ctx_cleanup(struct pp_context *pp);
 
 int pp_exchange_info(struct pp_context *ppc, int my_sgid_idx,

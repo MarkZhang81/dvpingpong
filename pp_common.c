@@ -82,7 +82,7 @@ static void pp_close_ibvdevice(struct ibv_context *ibctx)
 
 
 int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
-		int use_vfio, const char *vfio_pci_name)
+		int use_vfio, const char *vfio_pci_name, int access_flags)
 {
 #if 0
 	struct mlx5dv_vfio_context_attr vfio_ctx_attr = {
@@ -94,8 +94,8 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 	int ret, i;
 
 	//pp->cap.max_send_wr = PP_MAX_WR;
-	pp->cap.max_send_wr = 3;
-	pp->cap.max_recv_wr = PP_MAX_WR;
+	pp->cap.max_send_wr = 3;//PP_MAX_WR * 2;
+	pp->cap.max_recv_wr = 3;//PP_MAX_WR;
 	pp->cap.max_send_sge = 8;
 	pp->cap.max_recv_sge = 1;
 	pp->cap.max_inline_data = 0;
@@ -137,8 +137,7 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 			goto fail_memalign;
 		}
 
-		pp->mr[i] = ibv_reg_mr(pp->pd, pp->mrbuf[i], pp->mrbuflen,
-				       IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+		pp->mr[i] = ibv_reg_mr(pp->pd, pp->mrbuf[i], pp->mrbuflen, access_flags);
 		if (!pp->mr[i]) {
 			ERR("%d: ibv_reg_mr() failed\n", i);
 			ret = errno;
