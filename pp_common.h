@@ -27,7 +27,8 @@
 
 #define PP_MAX_WR 64		/* Max outstanding send/recv wr */
 
-#define PP_DATA_BUF_LEN ((1 << 20) + 63)
+//#define PP_DATA_BUF_LEN ((1 << 20) + 63)
+#define PP_DATA_BUF_LEN ((1 << 9) -1)
 
 #define PP_MAX_LOG_CQ_SIZE 8	/* 256 cqe */
 

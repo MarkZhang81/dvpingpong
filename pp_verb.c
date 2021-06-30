@@ -3,6 +3,7 @@
 int pp_create_cq_qp_verb(const struct pp_context *ppctx,
 			 struct pp_verb_cq_qp *ppv)
 {
+	struct mlx5dv_qp_init_attr attr_dv = {};
 	int ret;
 
 	struct ibv_cq_init_attr_ex cq_init_attr_ex = {
@@ -24,15 +25,22 @@ int pp_create_cq_qp_verb(const struct pp_context *ppctx,
 		.cap = ppctx->cap,
 
 		.qp_type = IBV_QPT_RC,
-		.comp_mask = IBV_QP_INIT_ATTR_PD,
+		.comp_mask = IBV_QP_INIT_ATTR_PD | IBV_QP_INIT_ATTR_SEND_OPS_FLAGS,
 		.pd = ppctx->pd,
+		.send_ops_flags = 0x1f,
 	};
-	ppv->qp = ibv_create_qp_ex(ppctx->ibctx, &init_attr);
+	attr_dv.comp_mask = MLX5DV_QP_INIT_ATTR_MASK_SEND_OPS_FLAGS;
+	attr_dv.send_ops_flags = MLX5DV_QP_EX_WITH_MEMCPY;
+	//ppv->qp = ibv_create_qp_ex(ppctx->ibctx, &init_attr);
+	ppv->qp = mlx5dv_create_qp(ppctx->ibctx, &init_attr, &attr_dv);
 	if (!ppv->qp) {
-		ERR("ibv_create_qp_ex() failed");
+		ERR("mlx5dv_create_qp failed failed");
 		ret = errno;
 		goto fail_create_qp;
 	}
+	ppv->qpx = ibv_qp_to_qp_ex(ppv->qp);
+	ppv->mqpx = mlx5dv_qp_ex_from_ibv_qp_ex(ppv->qpx);
+	INFO("mlx5dv_create_qp %d\n", ppv->qp->qp_num);
 
 	struct ibv_qp_attr attr = {
 		.qp_state = IBV_QPS_INIT,
@@ -211,6 +219,8 @@ int poll_cq_verb(struct pp_verb_ctx *ppv, int max_wr_num, bool for_recv)
 				    (int)wcs[i].wr_id);
 				return -1;
 			}
+			INFO("wc: id 0x%lx opcode 0x%x byte_len 0x%x wc_flags 0x%x imm_data 0x%x\n",
+			     wcs[i].wr_id, wcs[i].opcode, wcs[i].byte_len, wcs[i].wc_flags, be32toh(wcs[i].imm_data));
 		}
 		if (for_recv)
 			for (i = 0; i < cqn; i++)

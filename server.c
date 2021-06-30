@@ -1,7 +1,7 @@
 #include "pp_common.h"
 #include "pp_verb.h"
 
-static char ibv_devname[100] = "mlx5_3";
+static char ibv_devname[100] = "rocep8s0f0";
 static int server_sgid_idx = 3;
 
 static struct pp_verb_ctx ppv_ctx;
@@ -17,7 +17,7 @@ static int server_traffic_verb(struct pp_verb_ctx *ppv)
 	struct ibv_send_wr wrs[PP_MAX_WR] = {}, *bad_wrs;
 	struct ibv_recv_wr wrr[PP_MAX_WR] = {}, *bad_wrr;
 	struct ibv_sge sglists[PP_MAX_WR] = {};
-	int max_wr_num = PP_MAX_WR, ret;
+	int max_wr_num = 2, ret;
 
 	prepare_recv_wr_verb(ppv, wrr, sglists, max_wr_num, PP_RECV_WRID_SERVER);
 

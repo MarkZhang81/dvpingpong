@@ -84,11 +84,13 @@ static void pp_close_ibvdevice(struct ibv_context *ibctx)
 int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 		int use_vfio, const char *vfio_pci_name)
 {
+#if 0
 	struct mlx5dv_vfio_context_attr vfio_ctx_attr = {
 		.pci_name = vfio_pci_name,
 		.flags = MLX5DV_VFIO_CTX_FLAGS_INIT_LINK_DOWN,
 		.comp_mask = 0,
 	};
+#endif
 	int ret, i;
 
 	pp->cap.max_send_wr = PP_MAX_WR;
@@ -98,6 +100,8 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 	pp->cap.max_inline_data = 64;
 
 	if (use_vfio) {
+		return -EOPNOTSUPP;
+#if 0
 		struct ibv_device *ibdev;
 
 		pp->dev_list = mlx5dv_get_vfio_device_list(&vfio_ctx_attr);
@@ -112,6 +116,7 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 			return errno;
 		}
 		pp->port_num = PORT_NUM;
+#endif
 	} else {
 		ret = pp_open_ibvdevice(ibv_devname, pp);
 		if (ret)
@@ -143,9 +148,11 @@ int pp_ctx_init(struct pp_context *pp, const char *ibv_devname,
 		}
 	}
 
+#if 0
 	if (use_vfio)
 		INFO("VFIO open(%s) succeeds, flags 0x%x\n\n", vfio_pci_name, vfio_ctx_attr.flags);
 	else
+#endif
 		INFO("Initialization succeeds(regular)\n\n");
 
 
