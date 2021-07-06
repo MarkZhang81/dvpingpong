@@ -30,34 +30,34 @@ static void dump_buf(char *prompt, unsigned char *p, uint64_t len)
 }
 
 struct ibv_mr *dest, *src;
-void *dest_addr, *src_addr;
-uint64_t length = 256;
+unsigned char *dest_addr, *src_addr;
+uint64_t length = 8195;
 static void do_memcpy(struct pp_verb_ctx *ppv)
 {
 	struct mlx5dv_qp_ex *mqpx = ppv->cqqp.mqpx;
 
-	//src_addr = malloc(length);
-	//dest_addr = malloc(length);
-	src_addr = memalign(4096, length);
-	dest_addr = memalign(4096, length);
+	src_addr = malloc(length);
+	dest_addr = malloc(length);
+	//src_addr = memalign(4096, length);
+	//dest_addr = memalign(4096, length);
 	if (!src_addr || !dest_addr) {
 		ERR("malloc: %p %p\n", src_addr, dest_addr);
 		abort();
 	}
-	src = ibv_reg_mr(ppv->ppc.pd, src_addr, length, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
-	dest = ibv_reg_mr(ppv->ppc.pd, dest_addr, length, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+	src = ibv_reg_mr(ppv->ppc.pd, src_addr, length, 0);//IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
+	dest = ibv_reg_mr(ppv->ppc.pd, dest_addr, length, IBV_ACCESS_LOCAL_WRITE);//IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE);
 	if (!src || !dest) {
 		ERR("ibv_reg_mr: %p %p\n", src, dest);
 		abort();
 	}
 
 	mem_string(src_addr, length);
-	memset(dest_addr, 0, length);
+	memset(dest_addr, 's', length);
 
-	INFO("src_addr %p(lkey 0x%x), dest_addr %p(lkey 0x%x), length ox%lx\n",
+	INFO("src_addr %p(lkey 0x%x), dest_addr %p(lkey 0x%x), length 0x%lx\n",
 	     src_addr, src->lkey, dest_addr, dest->lkey, length);
 	dump_buf("src_buf", src_addr, length);
-	mlx5dv_wr_memcpy(mqpx, dest->lkey, (uint64_t)dest_addr, src->lkey, (uint64_t)src_addr, length);
+	mlx5dv_wr_memcpy(mqpx, dest->lkey, (uint64_t)dest_addr + 1, src->lkey, (uint64_t)src_addr + 1, length - 1);
 }
 
 static void do_memcpy_verify(struct pp_verb_ctx *ppv)
@@ -76,6 +76,41 @@ static void do_memcpy_verify(struct pp_verb_ctx *ppv)
 		printf("  dest_buf(len 0x%lx): %s...%s\n", length, p, p + length - 16);
 	}
 	*/
+}
+
+int poll_cq_lazy(struct pp_verb_ctx *ppv, int wc_num)
+{
+	struct ibv_cq_ex *cq_ex = ppv->cqqp.cq_ex;
+	struct ibv_poll_cq_attr attr = {};
+	int id = 0, ret;
+
+	do {
+		ret = ibv_start_poll(cq_ex, &attr);
+	} while (ret == ENOENT);
+	if (ret) {
+		ERR("poll CQ failed %d\n", ret);
+		return ret;
+	}
+	INFO("CQ %d: wr_id 0x%lx status %d opcode 0x%x\n",
+	     id, cq_ex->wr_id, cq_ex->status, ibv_wc_read_opcode(cq_ex));
+	id++;
+
+	while (id < wc_num) {
+		do {
+			ret = ibv_next_poll(cq_ex);
+		} while (ret == ENOENT);
+		if (ret) {
+			ERR("Poll CQ failed %d %d\n", ret, id);
+			goto out;
+		}
+		INFO("CQ %d: wr_id 0x%lx status %d opcode 0x%x\n",
+		     id, cq_ex->wr_id, cq_ex->status, ibv_wc_read_opcode(cq_ex));
+		id++;
+	}
+
+out:
+	ibv_end_poll(cq_ex);
+	return ret;
 }
 
 static int client_traffic_verb(struct pp_verb_ctx *ppv)
@@ -112,12 +147,14 @@ static int client_traffic_verb(struct pp_verb_ctx *ppv)
 	qpx->wr_id = PP_SEND_WRID_CLIENT + wid;
 	qpx->wr_flags = IBV_SEND_SIGNALED;
 	// need to do "wid-1" if there's a memcpy_wqe
-	/*ibv_wr_rdma_write_imm(qpx, server.mrkey[wid],
-	  (uint64_t)server.addr[wid], be32toh(0x50607080)); */
+	//ibv_wr_rdma_write_imm(qpx, server.mrkey[wid-1], (uint64_t)server.addr[wid-1], be32toh(0x50607080));
 	ibv_wr_send_imm(qpx,be32toh(0x50607080));
 	ibv_wr_set_sge(qpx, ppv->ppc.mr[wid]->lkey, (uint64_t)ppv->ppc.mrbuf[wid], ppv->ppc.mrbuflen);
 	send_wr_num++;
 	recv_wr_num++;
+
+	// NOTE: Need to modify the qp.c::mlx5dv_qp_cancel_posted_send_wrs() to make it able to test
+	//mlx5dv_qp_cancel_posted_send_wrs(ppv->cqqp.mqpx, PP_SEND_WRID_CLIENT + 1);
 
 	ret = ibv_wr_complete(qpx);
 	if (ret) {
@@ -125,7 +162,13 @@ static int client_traffic_verb(struct pp_verb_ctx *ppv)
 		abort();
 	}
 
+#if 0
+	INFO("Poll CQ (normal mode)\n");
 	ret = poll_cq_verb(ppv, send_wr_num, false);
+#else
+	INFO("Poll CQ (lazy mode)\n");
+	ret = poll_cq_lazy(ppv, send_wr_num);
+#endif
 	if (ret) {
 		ERR("poll_cq_verb failed\n");
 		return ret;
