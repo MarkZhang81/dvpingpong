@@ -540,9 +540,9 @@ static void post_send_one(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
 		htobe32(((dvqp->sq.cur_post & 0xffff) << 8) | opcode);
 	ctrl->qpn_ds = htobe32(size | (dvqp->qpn << 8));
 
-	post_send_db(dvqp, size, ctrl);
-
 	dvqp->sq.cur_post += DIV_ROUND_UP(size * 16, MLX5_SEND_WQE_BB);
+
+	post_send_db(dvqp, size, ctrl);
 }
 
 int pp_dv_post_send(const struct pp_context *ppc, struct pp_dv_qp *dvqp,
