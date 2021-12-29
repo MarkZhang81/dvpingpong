@@ -1,7 +1,7 @@
 #include "pp_common.h"
 #include "pp_verb.h"
 
-static char ibv_devname[100] = "mlx5_3";
+static char ibv_devname[100] = "mlx5_0";
 static int server_sgid_idx = 3;
 
 static struct pp_verb_ctx ppv_ctx;

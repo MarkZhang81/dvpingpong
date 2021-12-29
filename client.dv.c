@@ -1,10 +1,12 @@
 #include "pp_common.h"
 #include "pp_dv.h"
 
+#include "util/mmio.h"
+#include "util/udma_barrier.h"
 
 #define SERVER_IP "10.237.1.205"
 
-static char ibv_devname[100] = "ibp59s0f0";
+static char ibv_devname[100] = "rocep175s0f0";
 static int client_sgid_idx = 3;
 
 //#define PP_DV_OPCODE_CLIENT IBV_WR_RDMA_WRITE_WITH_IMM /* IBV_WR_SEND_WITH_IMM */
@@ -15,11 +17,31 @@ static int client_sgid_idx = 3;
 static struct pp_dv_ctx ppdv;
 static struct pp_exchange_info server = {};
 
+struct mlx5dv_devx_event_channel *ech;
+
+#define USE_CQ_EVENT 1
 static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 {
 	int num_post = PP_MAX_WR, num_comp, i, ret;
 	//int opcode = MLX5_OPCODE_RDMA_WRITE_IMM;
 	int opcode = MLX5_OPCODE_SEND_IMM;
+	uint16_t event_nums[1] = {0};
+
+	ech = mlx5dv_devx_create_event_channel(ppdv->ppc.ibctx,
+					       MLX5DV_DEVX_CREATE_EVENT_CHANNEL_FLAGS_OMIT_EV_DATA);
+	if (!ech) {
+		ERR("create_event_channel failed %d", errno);
+		return errno;
+	}
+	DBG("Event channgel created, fd %d\n", ech->fd);
+
+	ret = mlx5dv_devx_subscribe_devx_event(ech, ppdv->cq.obj, sizeof(event_nums), event_nums, 0);
+	if (ret) {
+		ERR("subscribe_devx_event failed: %d, errno %d", ret, errno);
+		return ret;
+	}
+	DBG("subscribe cq event succeeded\n\n");
+
 
 	DBG("Pause 1sec before post send, opcode %d num_post %d length 0x%lx..\n",
 	    opcode, num_post, ppdv->ppc.mrbuflen);
@@ -38,6 +60,55 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 	}
 
 	num_comp = 0;
+
+#ifdef USE_CQ_EVENT
+	DBG("Using cq event...\n");
+
+	union {
+		struct mlx5dv_devx_async_event_hdr event_resp;
+		uint8_t buf[sizeof(struct mlx5dv_devx_async_event_hdr) + 128];
+	} out;
+	unsigned int cmd_sn = 0, arm_ci = 0, cmd = 0;
+	__be32 doorbell[2];
+	ssize_t sz;
+
+	ppdv->cq.db[MLX5_CQ_ARM_DB] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
+	udma_to_device_barrier();
+
+	doorbell[0] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
+	doorbell[1] = htobe32(ppdv->cq.cqn);
+	mmio_write64_be(((uint8_t *)ppdv->cq.uar->base_addr + 0x20), *(__be64 *)doorbell);
+
+	while (num_comp < num_post) {
+
+		DBG("Waiting for cq event...\n");
+		sz = mlx5dv_devx_get_event(ech, &out.event_resp, sizeof(out.buf));
+		if (sz < 0) {
+			ERR("devx_get_event failed %ld, errno %d\n", sz, errno);
+			return sz;
+		}
+		DBG("cq event received");
+
+		ret = pp_dv_poll_cq(&ppdv->cq, 1);
+		if (ret <= 0) {
+			ERR("poll_cq(send) failed %d, %d/%d\n", ret, num_comp, num_post);
+			return ret;
+		}
+		DBG("cq event received, poll_cq returns %d\n", ret);
+
+		num_comp++;
+		cmd_sn = (cmd_sn + 1) & 3;
+		arm_ci = (arm_ci + 1) & 0xffffff;
+
+		ppdv->cq.db[MLX5_CQ_ARM_DB] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
+		udma_to_device_barrier();
+
+		doorbell[0] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
+		doorbell[1] = htobe32(ppdv->cq.cqn);
+		mmio_write64_be(((uint8_t *)ppdv->cq.uar->base_addr + 0x20), *(__be64 *)doorbell);
+	}
+#else
+	DBG("Using cq poll...\n");
 	while (num_comp < num_post) {
 		ret = pp_dv_poll_cq(&ppdv->cq, 1);
 		if (ret == CQ_POLL_ERR) {
@@ -47,6 +118,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 		if (ret > 0)
 			num_comp++;
 	}
+#endif
 
 	/* Reset the buffer so that we can check it the received data is expected */
 	for (i = 0; i < num_post; i++)
@@ -73,6 +145,8 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 	}
 
 	INFO("Client(dv) traffic test done\n");
+
+	mlx5dv_devx_destroy_event_channel(ech);
 	return 0;
 }
 
