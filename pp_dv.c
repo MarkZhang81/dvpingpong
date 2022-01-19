@@ -13,22 +13,23 @@
 
 #define PP_ACCESS_FALGS (IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ)
 
-int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq)
+int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq, unsigned int eqn)
 {
 	uint32_t in[DEVX_ST_SZ_DW(create_cq_in)] = {};
 	uint32_t out[DEVX_ST_SZ_DW(create_cq_out)] = {};
 	void *cqc = DEVX_ADDR_OF(create_cq_in, in, cq_context);
 	struct mlx5_cqe64 *cqe;
-	uint32_t eqn;
 	int i, ret;
 
 	dvcq->cqe_sz = 64;
 	dvcq->ncqe = 1 << PP_MAX_LOG_CQ_SIZE;
 
-	ret = mlx5dv_devx_query_eqn(ppc->ibctx, 0, &eqn);
-	if (ret) {
-		ERR("devx_query_eqn failed: %d, errno %d\n", ret, errno);
-		return ret;
+	if (!eqn) {
+		ret = mlx5dv_devx_query_eqn(ppc->ibctx, 0, &eqn);
+		if (ret) {
+			ERR("devx_query_eqn failed: %d, errno %d\n", ret, errno);
+			return ret;
+		}
 	}
 
 	ret = posix_memalign((void **)&dvcq->db, 8, 8);

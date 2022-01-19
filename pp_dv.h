@@ -62,7 +62,7 @@ struct pp_dv_ctx {
 	struct pp_dv_qp qp;
 };
 
-int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq);
+int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq, unsigned eqn);
 void pp_destroy_cq_dv(struct pp_dv_cq *dvcq);
 int pp_create_qp_dv(const struct pp_context *ppc,
 		    struct pp_dv_cq *dvcq, struct pp_dv_qp *dvqp);
