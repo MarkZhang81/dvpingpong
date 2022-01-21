@@ -28,8 +28,8 @@ static struct mlx5_eq {
 	int nent;
 	void *vaddr;
 	struct mlx5dv_devx_uar *uar;
-	struct mlx5dv_vfio_msi_vector *msi;
-	struct mlx5dv_vfio_eq *dv_eq;
+	struct mlx5dv_devx_msi_vector *msi;
+	struct mlx5dv_devx_eq *dv_eq;
 } async_eq;
 
 static int client_traffic_dv(struct pp_dv_ctx *ppdv)
@@ -216,7 +216,7 @@ static inline uint32_t mlx5_eq_update_cc(struct mlx5_eq *eq, uint32_t cc)
 static int create_eq(struct pp_context *ppc)
 {
 	uint32_t in[DEVX_ST_SZ_DW(create_eq_in)] = {}, out[DEVX_ST_SZ_DW(create_eq_out)] = {};
-	struct mlx5dv_vfio_eq *eq;
+	struct mlx5dv_devx_eq *eq;
 	uint64_t mask[4] = {};
 	void *eqc;
 	int i;
@@ -239,9 +239,9 @@ static int create_eq(struct pp_context *ppc)
 	DEVX_SET(eqc, eqc, uar_page, async_eq.uar->page_id);
 	DEVX_SET(eqc, eqc, intr, async_eq.msi->vector);
 
-	eq = mlx5dv_vfio_create_eq(ppc->ibctx, in, sizeof(in), out, sizeof(out));
+	eq = mlx5dv_devx_create_eq(ppc->ibctx, in, sizeof(in), out, sizeof(out));
 	if (!eq) {
-		ERR("mlx5dv_vfio_create_eq errno %d\n", errno);
+		ERR("mlx5dv_devx_create_eq errno %d\n", errno);
 		goto fail_obj_create;
 	}
 
@@ -264,7 +264,7 @@ fail_obj_create:
 
 static int destroy_eq(struct mlx5_eq *eq)
 {
-	mlx5dv_vfio_destroy_eq(eq->dv_eq);
+	mlx5dv_devx_destroy_eq(eq->dv_eq);
 	mlx5dv_devx_free_uar(eq->uar);
 	return 0;
 }
@@ -386,7 +386,7 @@ static int setup_async_eq(struct pp_context *ppc)
 {
 	int ret;
 
-	async_eq.msi = mlx5dv_vfio_alloc_msi_vector(ppc->ibctx);
+	async_eq.msi = mlx5dv_devx_alloc_msi_vector(ppc->ibctx);
 	if (!async_eq.msi)
 		return -1;
 
@@ -402,7 +402,7 @@ static int setup_async_eq(struct pp_context *ppc)
 	return 0;
 
 fail_create_eq:
-	mlx5dv_vfio_free_msi_vector(async_eq.msi);
+	mlx5dv_devx_free_msi_vector(async_eq.msi);
 	return ret;
 }
 
@@ -491,7 +491,7 @@ static void vfio_cleanup(struct pp_context *ppc)
 	pthread_join(event_tid, &res);
 
 	destroy_eq(&async_eq);
-	mlx5dv_vfio_free_msi_vector(async_eq.msi);
+	mlx5dv_devx_free_msi_vector(async_eq.msi);
 }
 
 static void parse_arg(int argc, char *argv[])
