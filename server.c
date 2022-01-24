@@ -12,24 +12,24 @@ static struct pp_exchange_info client = {};
 
 #define PP_VERB_OPCODE_SERVER IBV_WR_RDMA_WRITE_WITH_IMM /* IBV_WR_SEND_WITH_IMM */
 
-static int server_traffic_verb(struct pp_verb_ctx *ppv)
+static int server_traffic_verb(struct pp_verb_ctx *ppv, int index)
 {
 	struct ibv_send_wr wrs[PP_MAX_WR] = {}, *bad_wrs;
 	struct ibv_recv_wr wrr[PP_MAX_WR] = {}, *bad_wrr;
 	struct ibv_sge sglists[PP_MAX_WR] = {};
 	int max_wr_num = PP_MAX_WR, ret;
 
-	prepare_recv_wr_verb(ppv, wrr, sglists, max_wr_num, PP_RECV_WRID_SERVER);
+	prepare_recv_wr_verb(&ppv->ppc, wrr, sglists, max_wr_num, PP_RECV_WRID_SERVER);
 
 	INFO("Waiting for data...\n");
 	/* 1. Recv "ping" */
-	ret = ibv_post_recv(ppv->cqqp.qp, wrr, &bad_wrr);
+	ret = ibv_post_recv(ppv->cqqp[index].qp, wrr, &bad_wrr);
 	if (ret) {
 		ERR("%d: ibv_post_send failed %d\n", max_wr_num, ret);
 		return ret;
 	}
 
-	ret = poll_cq_verb(ppv, max_wr_num, true);
+	ret = poll_cq_verb(&ppv->ppc, &ppv->cqqp[index], max_wr_num, true);
 	if (ret) {
 		ERR("poll_cq_verb failed\n");
 		return ret;
@@ -37,15 +37,15 @@ static int server_traffic_verb(struct pp_verb_ctx *ppv)
 
 	sleep(2);
 	INFO("Now sending reply (%d)...\n", max_wr_num);
-	prepare_send_wr_verb(ppv, wrs, sglists, &client, max_wr_num,
+	prepare_send_wr_verb(&ppv->ppc, wrs, sglists, &client, max_wr_num,
 			     PP_SEND_WRID_SERVER, PP_VERB_OPCODE_SERVER, false);
-	ret = ibv_post_send(ppv->cqqp.qp, wrs, &bad_wrs);
+	ret = ibv_post_send(ppv->cqqp[index].qp, wrs, &bad_wrs);
 	if (ret) {
 		ERR("%d: ibv_post_send failed %d\n", max_wr_num, ret);
 		return ret;
 	}
 
-	ret = poll_cq_verb(ppv, max_wr_num, false);
+	ret = poll_cq_verb(&ppv->ppc, &ppv->cqqp[index], max_wr_num, false);
 	if (ret) {
 		ERR("poll_cq_verb failed\n");
 		return ret;
@@ -69,24 +69,45 @@ int main(int argc, char *argv[])
 	if (ret)
 		return ret;
 
-	ret = pp_create_cq_qp_verb(&ppv_ctx.ppc, &ppv_ctx.cqqp);
+	ret = pp_create_cq_qp_verb(&ppv_ctx.ppc, &ppv_ctx.cqqp[0]);
 	if (ret)
 		goto out_create_cq_qp;
 
+	ret = pp_create_cq_qp_verb(&ppv_ctx.ppc, &ppv_ctx.cqqp[1]);
+	if (ret)
+		goto out_create_cq_qp2;
+
 	ret = pp_exchange_info(&ppv_ctx.ppc, server_sgid_idx,
-			       ppv_ctx.cqqp.qp->qp_num, SERVER_PSN, &client, NULL);
+			       ppv_ctx.cqqp[0].qp->qp_num, SERVER_PSN, &client, NULL);
 	if (ret)
 		goto out_exchange;
 
-	ret = pp_move2rts_verb(&ppv_ctx.ppc, ppv_ctx.cqqp.qp, server_sgid_idx,
+
+	ret = pp_move2rts_verb(&ppv_ctx.ppc, ppv_ctx.cqqp[0].qp, server_sgid_idx,
 			       SERVER_PSN, &client);
 	if (ret)
 		goto out_exchange;
 
-	ret = server_traffic_verb(&ppv_ctx);
+	// cqqp2
+	DBG("Start to exchange infor for 2nd qp...");
+	ret = pp_exchange_info(&ppv_ctx.ppc, server_sgid_idx,
+			       ppv_ctx.cqqp[1].qp->qp_num, SERVER_PSN, &client, NULL);
+	if (ret)
+		goto out_exchange;
+
+
+	ret = pp_move2rts_verb(&ppv_ctx.ppc, ppv_ctx.cqqp[1].qp, server_sgid_idx,
+			       SERVER_PSN, &client);
+	if (ret)
+		goto out_exchange;
+
+	ret = server_traffic_verb(&ppv_ctx, 0);
+	ret = server_traffic_verb(&ppv_ctx, 1);
 
 out_exchange:
-	pp_destroy_cq_qp_verb(&ppv_ctx.cqqp);
+	pp_destroy_cq_qp_verb(&ppv_ctx.cqqp[1]);
+out_create_cq_qp2:
+	pp_destroy_cq_qp_verb(&ppv_ctx.cqqp[0]);
 out_create_cq_qp:
 	pp_ctx_cleanup(&ppv_ctx.ppc);
 	return ret;

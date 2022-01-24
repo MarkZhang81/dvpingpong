@@ -58,8 +58,8 @@ struct pp_dv_cq {
 
 struct pp_dv_ctx {
 	struct pp_context ppc;
-	struct pp_dv_cq cq;
-	struct pp_dv_qp qp;
+	struct pp_dv_cq cq[2];
+	struct pp_dv_qp qp[2];
 };
 
 int pp_create_cq_dv(const struct pp_context *ppc, struct pp_dv_cq *dvcq, unsigned eqn);

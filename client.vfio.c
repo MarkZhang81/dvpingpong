@@ -30,14 +30,15 @@ static struct mlx5_eq {
 	struct mlx5dv_devx_uar *uar;
 	struct mlx5dv_devx_msi_vector *msi;
 	struct mlx5dv_devx_eq *dv_eq;
-} async_eq;
+} async_eq, cq_eq1, cq_eq2;
 
-static int client_traffic_dv(struct pp_dv_ctx *ppdv)
+static int client_traffic_dv(struct pp_dv_ctx *ppdv, int index)
 {
 	int num_post = PP_MAX_WR, num_comp, i, ret;
 	//int opcode = MLX5_OPCODE_RDMA_WRITE_IMM;
 	int opcode = MLX5_OPCODE_SEND_IMM;
 	unsigned int cmd_sn = 0, arm_ci = 0, cmd = 0;
+	struct mlx5_eq *eq;
 	__be32 doorbell[2];
 
 	DBG("Pause 1sec before post send, opcode %d\n", opcode);
@@ -48,7 +49,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 		*ppdv->ppc.mrbuf[i] = i % ('z' - '0') + '0';
 	}
 
-	ret = pp_dv_post_send(&ppdv->ppc, &ppdv->qp, &server, num_post,
+	ret = pp_dv_post_send(&ppdv->ppc, &ppdv->qp[index], &server, num_post,
 			      opcode, IBV_SEND_SIGNALED);
 	if (ret) {
 		ERR("pp_dv_post_send failed\n");
@@ -57,20 +58,25 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 
 	num_comp = 0;
 
+	if (index == 0)
+		eq = &cq_eq1;
+	else
+		eq = &cq_eq2;
+
 #if 1
-	ppdv->cq.db[MLX5_CQ_ARM_DB] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
+	ppdv->cq[index].db[MLX5_CQ_ARM_DB] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
 	udma_to_device_barrier();
 	doorbell[0] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
-	doorbell[1] =  htobe32(ppdv->cq.cqn);
+	doorbell[1] =  htobe32(ppdv->cq[index].cqn);
 	//mmio_write64_be(((uint8_t *)ppdv->cq.uar->base_addr + 0x20), *(__be64 *)doorbell);
-	mmio_write64_be(((uint8_t *)async_eq.uar->base_addr + 0x20), *(__be64 *)doorbell);
-	printf("=DEBUG:%s:%d: ppdv->cq.uar->base_addr %p, async_eq.uar->base_addr %p\n", __func__, __LINE__, ppdv->cq.uar->base_addr, async_eq.uar->base_addr);
+	mmio_write64_be(((uint8_t *)eq->uar->base_addr + 0x20), *(__be64 *)doorbell);
+	printf("=DEBUG:%s:%d: ppdv->cq.uar->base_addr %p, eq->uar->base_addr %p\n", __func__, __LINE__, ppdv->cq[index].uar->base_addr, eq->uar->base_addr);
 #endif
 	while (num_comp < num_post) {
 		/* FIXME: Need to wait for the event from the do_process_async_event() thread,
 		 *        otherwise not sure if there's any contention
 		 */
-		ret = pp_dv_poll_cq(&ppdv->cq, 1);
+		ret = pp_dv_poll_cq(&ppdv->cq[index], 1);
 		if (ret == CQ_POLL_ERR) {
 			ERR("poll_cq(send) failed %d, %d/%d\n", ret, num_comp, num_post);
 			return ret;
@@ -97,7 +103,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 		memset(ppdv->ppc.mrbuf[i], 0, ppdv->ppc.mrbuflen);
 
 	INFO("Send done (num_post %d), now recving reply...\n", num_post);
-	ret = pp_dv_post_recv(&ppdv->ppc, &ppdv->qp, num_post);
+	ret = pp_dv_post_recv(&ppdv->ppc, &ppdv->qp[index], num_post);
 	if (ret) {
 		ERR("pp_dv_post_recv failed\n");
 		return ret;
@@ -105,7 +111,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 
 	num_comp = 0;
 	while (num_comp < num_post) {
-		ret = pp_dv_poll_cq(&ppdv->cq, 1);
+		ret = pp_dv_poll_cq(&ppdv->cq[index], 1);
 		if (ret == CQ_POLL_ERR) {
 			ERR("poll_cq(recv) failed %d, %d/%d\n", ret, num_comp, num_post);
 			return ret;
@@ -213,16 +219,16 @@ static inline uint32_t mlx5_eq_update_cc(struct mlx5_eq *eq, uint32_t cc)
 	return cc;
 }
 
-static int create_eq(struct pp_context *ppc)
+static int create_eq(struct pp_context *ppc, struct mlx5_eq *eq)
 {
 	uint32_t in[DEVX_ST_SZ_DW(create_eq_in)] = {}, out[DEVX_ST_SZ_DW(create_eq_out)] = {};
-	struct mlx5dv_devx_eq *eq;
+	struct mlx5dv_devx_eq *dveq;
 	uint64_t mask[4] = {};
 	void *eqc;
 	int i;
 
-	async_eq.uar = mlx5dv_devx_alloc_uar(ppc->ibctx, MLX5_IB_UAPI_UAR_ALLOC_TYPE_NC);
-	if (!async_eq.uar) {
+	eq->uar = mlx5dv_devx_alloc_uar(ppc->ibctx, MLX5_IB_UAPI_UAR_ALLOC_TYPE_NC);
+	if (!eq->uar) {
 		ERR("mlx5dv_devx_alloc_uar errno %d\n", errno);
 		return errno;
 	}
@@ -233,32 +239,32 @@ static int create_eq(struct pp_context *ppc)
 
 	DEVX_SET(create_eq_in, in, opcode, MLX5_CMD_OP_CREATE_EQ);
 
-	async_eq.nent = EQE_ENTRY_NUM;
+	eq->nent = EQE_ENTRY_NUM;
 	eqc = DEVX_ADDR_OF(create_eq_in, in, eq_context_entry);
-        DEVX_SET(eqc, eqc, log_eq_size, ilog32(async_eq.nent - 1));
-	DEVX_SET(eqc, eqc, uar_page, async_eq.uar->page_id);
-	DEVX_SET(eqc, eqc, intr, async_eq.msi->vector);
+        DEVX_SET(eqc, eqc, log_eq_size, ilog32(eq->nent - 1));
+	DEVX_SET(eqc, eqc, uar_page, eq->uar->page_id);
+	DEVX_SET(eqc, eqc, intr, eq->msi->vector);
 
-	eq = mlx5dv_devx_create_eq(ppc->ibctx, in, sizeof(in), out, sizeof(out));
-	if (!eq) {
+	dveq = mlx5dv_devx_create_eq(ppc->ibctx, in, sizeof(in), out, sizeof(out));
+	if (!dveq) {
 		ERR("mlx5dv_devx_create_eq errno %d\n", errno);
 		goto fail_obj_create;
 	}
 
-	async_eq.vaddr = eq->vaddr;
-	async_eq.dv_eq = eq;
-	async_eq.eqn = DEVX_GET(create_eq_out, out, eq_number);
-	async_eq.cons_index = 0;
-	async_eq.doorbell = async_eq.uar->base_addr + MLX5_EQ_DOORBEL_OFFSET;
+	eq->vaddr = dveq->vaddr;
+	eq->dv_eq = dveq;
+	eq->eqn = DEVX_GET(create_eq_out, out, eq_number);
+	eq->cons_index = 0;
+	eq->doorbell = eq->uar->base_addr + MLX5_EQ_DOORBEL_OFFSET;
 
-	init_eq_buf(&async_eq);
+	init_eq_buf(eq);
 
-	DBG("async_eq: doorbell %p cons_index %d vecidx %d eqn %d nent %d vaddr %p uar->page_id %d\n", async_eq.doorbell, async_eq.cons_index, async_eq.msi->vector, async_eq.eqn, async_eq.nent, async_eq.dv_eq->vaddr, async_eq.uar->page_id);
+	DBG("eq: doorbell %p cons_index %d vecidx %d eqn %d nent %d vaddr %p uar->page_id %d\n", eq->doorbell, eq->cons_index, eq->msi->vector, eq->eqn, eq->nent, eq->dv_eq->vaddr, eq->uar->page_id);
 
 	return 0;
 
 fail_obj_create:
-	mlx5dv_devx_free_uar(async_eq.uar);
+	mlx5dv_devx_free_uar(eq->uar);
 	return errno;
 }
 
@@ -280,13 +286,13 @@ static void process_event_port_state_change(struct mlx5_eqe *eqe)
 	printf("=DEBUG:%s:%d: Received port state change event(sub_type %d) for port %d.........\n", __func__, __LINE__, eqe->sub_type, eqe->data.port.port_num >> 4);
 }
 
-static int do_process_async_event(void)
+static int do_process_async_event(struct mlx5_eq *eq)
 {
 	struct mlx5_eqe *eqe;
 	int ret = 0;
 	int cc = 0;
 
-	while ((eqe = mlx5_eq_get_eqe(&async_eq, cc))) {
+	while ((eqe = mlx5_eq_get_eqe(eq, cc))) {
 		switch (eqe->type) {
 		case MLX5_EVENT_TYPE_COMP:
 			process_event_comp(eqe);
@@ -299,26 +305,26 @@ static int do_process_async_event(void)
 			break;
 		}
 
-		cc = mlx5_eq_update_cc(&async_eq, ++cc);
+		cc = mlx5_eq_update_cc(eq, ++cc);
 	}
 
-	eq_update_ci(&async_eq, cc, 1);
+	eq_update_ci(eq, cc, 1);
 	return ret;
 }
 
-int process_async_event(int fd)
+int process_async_event(struct mlx5_eq *eq)
 {
 	uint64_t u;
 	ssize_t s;
 
 	/* read to re-arm the FD and process all existing events */
-	s = read(fd, &u, sizeof(uint64_t));
+	s = read(eq->msi->fd, &u, sizeof(uint64_t));
 	if (s < 0 && errno != EAGAIN) {
 		ERR("read failed, errno=%d\n", errno);
 		return errno;
 	}
 
-	return do_process_async_event();
+	return do_process_async_event(eq);
 }
 
 #define MAX_EVENTS 1
@@ -357,6 +363,22 @@ void *vfio_poll_eq_event_routine(void *arg)
 		return NULL;
 	}
 
+	ev.events = EPOLLIN;
+	ev.data.fd = cq_eq1.msi->fd;
+	ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, cq_eq1.msi->fd, &ev);
+	if (ret < 0) {
+		ERR("epoll_ctl failed\n");
+		return NULL;
+	}
+
+	ev.events = EPOLLIN;
+	ev.data.fd = cq_eq2.msi->fd;
+	ret = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, cq_eq2.msi->fd, &ev);
+	if (ret < 0) {
+		ERR("epoll_ctl failed\n");
+		return NULL;
+	}
+
 	while (1) {
 		nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
 		if (nfds < 0) {
@@ -371,10 +393,17 @@ void *vfio_poll_eq_event_routine(void *arg)
 				ERR("events 0x%x\n", events[i].events);
 				return NULL;
 			}
+			/* FIXME: Use other fields of epoll_data to get the eq */
 			if (events[i].data.fd == vfio_driver_fd)
 				mlx5dv_vfio_process_events(pp->ibctx);
 			else if (events[i].data.fd == async_eq.msi->fd)
-				process_async_event(async_eq.msi->fd);
+				process_async_event(&async_eq);
+			else if (events[i].data.fd == cq_eq1.msi->fd)
+				process_async_event(&cq_eq1);
+			else if (events[i].data.fd == cq_eq2.msi->fd)
+				process_async_event(&cq_eq2);
+			else
+				ERR("%d: Unknown fd %d\n", i, events[i].data.fd);
 		}
 	}
 
@@ -382,27 +411,27 @@ void *vfio_poll_eq_event_routine(void *arg)
 	return NULL;
 }
 
-static int setup_async_eq(struct pp_context *ppc)
+static int setup_async_eq(struct pp_context *ppc, struct mlx5_eq *eq)
 {
 	int ret;
 
-	async_eq.msi = mlx5dv_devx_alloc_msi_vector(ppc->ibctx);
-	if (!async_eq.msi)
+	eq->msi = mlx5dv_devx_alloc_msi_vector(ppc->ibctx);
+	if (!eq->msi)
 		return -1;
 
-	DBG("async event vector %d fd %d\n", async_eq.msi->vector, async_eq.msi->fd);
+	DBG("async event vector %d fd %d\n", eq->msi->vector, eq->msi->fd);
 
-	ret = create_eq(ppc);
+	ret = create_eq(ppc, eq);
 	if (ret) {
 		ERR("eventfd failed errno %d\n", errno);
 		goto fail_create_eq;
 	}
 
-	eq_update_ci(&async_eq, 0, 1);
+	eq_update_ci(eq, 0, 1);
 	return 0;
 
 fail_create_eq:
-	mlx5dv_devx_free_msi_vector(async_eq.msi);
+	mlx5dv_devx_free_msi_vector(eq->msi);
 	return ret;
 }
 
@@ -455,7 +484,9 @@ static int vfio_init(struct pp_context *ppc)
 	if (ret)
 		return ret;
 
-	ret = setup_async_eq(ppc);
+	ret = setup_async_eq(ppc, &async_eq);
+	ret = setup_async_eq(ppc, &cq_eq1);
+	ret = setup_async_eq(ppc, &cq_eq2);
 	if (ret)
 		return ret;
 
@@ -518,31 +549,53 @@ int main(int argc, char *argv[])
 	if (ret)
 		goto out_vfio_init;
 
-	ret = pp_create_cq_dv(&ppvfio.ppc, &ppvfio.cq, async_eq.eqn);
+	ret = pp_create_cq_dv(&ppvfio.ppc, &ppvfio.cq[0], cq_eq1.eqn);
 	if (ret)
 		goto out_create_cq;
 
-	ret = pp_create_qp_dv(&ppvfio.ppc, &ppvfio.cq, &ppvfio.qp);
+	ret = pp_create_qp_dv(&ppvfio.ppc, &ppvfio.cq[0], &ppvfio.qp[0]);
 	if (ret)
 		goto out_create_qp;
 
-	ret = pp_exchange_info(&ppvfio.ppc, 0, ppvfio.qp.qpn,
+	ret = pp_create_cq_dv(&ppvfio.ppc, &ppvfio.cq[1], cq_eq2.eqn);
+	if (ret)
+		goto out_create_cq;
+
+	ret = pp_create_qp_dv(&ppvfio.ppc, &ppvfio.cq[1], &ppvfio.qp[1]);
+	if (ret)
+		goto out_create_qp;
+
+	ret = pp_exchange_info(&ppvfio.ppc, 0, ppvfio.qp[0].qpn,
 			       CLIENT_PSN, &server, SERVER_IP);
 	if (ret)
 		goto out_exchange;
 
-	ret = pp_move2rts_dv(&ppvfio.ppc, &ppvfio.qp, 0,
+	ret = pp_move2rts_dv(&ppvfio.ppc, &ppvfio.qp[0], 0,
 			     CLIENT_PSN, &server);
 	if (ret)
 		goto out_exchange;
 
-	ret = client_traffic_dv(&ppvfio);
+
+	sleep(3);
+	DBG("Start to exchange infor for 2nd qp...");
+	ret = pp_exchange_info(&ppvfio.ppc, 0, ppvfio.qp[1].qpn,
+			       CLIENT_PSN, &server, SERVER_IP);
+	if (ret)
+		goto out_exchange;
+
+	ret = pp_move2rts_dv(&ppvfio.ppc, &ppvfio.qp[1], 0,
+			     CLIENT_PSN, &server);
+	if (ret)
+		goto out_exchange;
+
+	ret = client_traffic_dv(&ppvfio, 0);	sleep(3);
+	ret = client_traffic_dv(&ppvfio, 1);
 
 
 out_exchange:
-	pp_destroy_qp_dv(&ppvfio.qp);
+	pp_destroy_qp_dv(&ppvfio.qp[0]);
 out_create_qp:
-	pp_destroy_cq_dv(&ppvfio.cq);
+	pp_destroy_cq_dv(&ppvfio.cq[0]);
 out_create_cq:
 	vfio_cleanup(&ppvfio.ppc);
 out_vfio_init:

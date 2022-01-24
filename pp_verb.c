@@ -128,18 +128,18 @@ int pp_move2rts_verb(struct pp_context *ppc, struct ibv_qp *qp,
 	return 0;
 }
 
-void prepare_recv_wr_verb(struct pp_verb_ctx *ppv, struct ibv_recv_wr wrr[],
+void prepare_recv_wr_verb(struct pp_context *ppc, struct ibv_recv_wr wrr[],
 			  struct ibv_sge sglists[], int max_wr_num,
 			  uint64_t wr_id)
 {
 	int i;
 
 	for (i = 0; i < max_wr_num; i++) {
-		memset(ppv->ppc.mrbuf[i], 0, ppv->ppc.mrbuflen);
+		memset(ppc->mrbuf[i], 0, ppc->mrbuflen);
 
-		sglists[i].lkey = ppv->ppc.mr[i]->lkey;
-		sglists[i].addr = (uint64_t)ppv->ppc.mrbuf[i];
-		sglists[i].length = ppv->ppc.mrbuflen;
+		sglists[i].lkey = ppc->mr[i]->lkey;
+		sglists[i].addr = (uint64_t)ppc->mrbuf[i];
+		sglists[i].length = ppc->mrbuflen;
 
 		if (i < max_wr_num - 1)
 			wrr[i].next = &wrr[i+1];
@@ -152,7 +152,7 @@ void prepare_recv_wr_verb(struct pp_verb_ctx *ppv, struct ibv_recv_wr wrr[],
 	}
 }
 
-void prepare_send_wr_verb(struct pp_verb_ctx *ppv, struct ibv_send_wr wrs[],
+void prepare_send_wr_verb(struct pp_context *ppc, struct ibv_send_wr wrs[],
 			  struct ibv_sge sglists[], struct pp_exchange_info *peer,
 			  int max_wr_num, uint64_t wr_id, int opcode, bool initbuf)
 {
@@ -160,13 +160,13 @@ void prepare_send_wr_verb(struct pp_verb_ctx *ppv, struct ibv_send_wr wrs[],
 
 	for (i = 0; i < max_wr_num; i++) {
 		if (initbuf) {
-			mem_string(ppv->ppc.mrbuf[i], ppv->ppc.mrbuflen);
-			*ppv->ppc.mrbuf[i] = i % 16 + '0';
+			mem_string(ppc->mrbuf[i], ppc->mrbuflen);
+			*ppc->mrbuf[i] = i % 16 + '0';
 		}
 
-		sglists[i].lkey = ppv->ppc.mr[i]->lkey;
-		sglists[i].addr = (uint64_t)ppv->ppc.mrbuf[i];
-		sglists[i].length = ppv->ppc.mrbuflen;
+		sglists[i].lkey = ppc->mr[i]->lkey;
+		sglists[i].addr = (uint64_t)ppc->mrbuf[i];
+		sglists[i].length = ppc->mrbuflen;
 
 		if (i < max_wr_num - 1)
 			wrs[i].next = &wrs[i+1];
@@ -187,14 +187,14 @@ void prepare_send_wr_verb(struct pp_verb_ctx *ppv, struct ibv_send_wr wrs[],
 	}
 }
 
-int poll_cq_verb(struct pp_verb_ctx *ppv, int max_wr_num, bool for_recv)
+int poll_cq_verb(struct pp_context *ppc,struct pp_verb_cq_qp *cqqp, int max_wr_num, bool for_recv)
 {
 	struct ibv_wc wcs[PP_MAX_WR];
 	int cq_recved = 0, cqn, i;
 
 	do {
 		do {
-			cqn = ibv_poll_cq(ibv_cq_ex_to_cq(ppv->cqqp.cq_ex),
+			cqn = ibv_poll_cq(ibv_cq_ex_to_cq(cqqp->cq_ex),
 					  max_wr_num - cq_recved, wcs);
 			usleep(1000 * 10);
 		} while (cqn == 0);
@@ -214,7 +214,7 @@ int poll_cq_verb(struct pp_verb_ctx *ppv, int max_wr_num, bool for_recv)
 		}
 		if (for_recv)
 			for (i = 0; i < cqn; i++)
-				dump_msg_short(cq_recved + i, &ppv->ppc);
+				dump_msg_short(cq_recved + i, ppc);
 		else
 			INFO("Polled %d/%d CQEs for post_send..\n", cq_recved + cqn, max_wr_num);
 

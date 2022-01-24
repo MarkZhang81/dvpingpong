@@ -64,6 +64,7 @@ int sock_server(char *sendbuf, int send_buflen, char *recvbuf, int recv_buflen)
 		return -1;
 	}
 
+	close(server_fd);
 	//printf("    =DEBUG:%s:%d: Server info exchange done(recv_buflen %d readlen %d send_buflen %d sent %d)\n", __func__, __LINE__, recv_buflen, readlen, send_buflen, sent);
 	return 0;
 }
@@ -110,6 +111,7 @@ int sock_client(const char *server_ip, char *sendbuf, int send_buflen,
 		return -1;
 	}
 
+	close(sock);
 	//printf("    =DEBUG:%s:%d: Client info exchange done(recv_buflen %d readlen %d send_buflen %d sent %d)\n", __func__, __LINE__, recv_buflen, readlen, send_buflen, sent);
 	return 0;
 }

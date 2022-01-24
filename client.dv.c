@@ -15,7 +15,7 @@ static int client_sgid_idx = 3;
 static struct pp_dv_ctx ppdv;
 static struct pp_exchange_info server = {};
 
-static int client_traffic_dv(struct pp_dv_ctx *ppdv)
+static int client_traffic_dv(struct pp_dv_ctx *ppdv, int index)
 {
 	int num_post = PP_MAX_WR, num_comp, i, ret;
 	//int opcode = MLX5_OPCODE_RDMA_WRITE_IMM;
@@ -30,7 +30,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 		*ppdv->ppc.mrbuf[i] = i % ('z' - '0') + '0';
 	}
 
-	ret = pp_dv_post_send(&ppdv->ppc, &ppdv->qp, &server, num_post,
+	ret = pp_dv_post_send(&ppdv->ppc, &ppdv->qp[0], &server, num_post,
 			      opcode, IBV_SEND_SIGNALED);
 	if (ret) {
 		ERR("pp_dv_post_send failed\n");
@@ -39,7 +39,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 
 	num_comp = 0;
 	while (num_comp < num_post) {
-		ret = pp_dv_poll_cq(&ppdv->cq, 1);
+		ret = pp_dv_poll_cq(&ppdv->cq[0], 1);
 		if (ret == CQ_POLL_ERR) {
 			ERR("poll_cq(send) failed %d, %d/%d\n", ret, num_comp, num_post);
 			return ret;
@@ -53,7 +53,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 		memset(ppdv->ppc.mrbuf[i], 0, ppdv->ppc.mrbuflen);
 
 	INFO("Send done (num_post %d), now recving reply...\n", num_post);
-	ret = pp_dv_post_recv(&ppdv->ppc, &ppdv->qp, num_post);
+	ret = pp_dv_post_recv(&ppdv->ppc, &ppdv->qp[0], num_post);
 	if (ret) {
 		ERR("pp_dv_post_recv failed\n");
 		return ret;
@@ -61,7 +61,7 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 
 	num_comp = 0;
 	while (num_comp < num_post) {
-		ret = pp_dv_poll_cq(&ppdv->cq, 1);
+		ret = pp_dv_poll_cq(&ppdv->cq[0], 1);
 		if (ret == CQ_POLL_ERR) {
 			ERR("poll_cq(recv) failed %d, %d/%d\n", ret, num_comp, num_post);
 			return ret;
@@ -89,30 +89,30 @@ int main(int argc, char *argv[])
 	if (ret)
 		return ret;
 
-	ret = pp_create_cq_dv(&ppdv.ppc, &ppdv.cq, 0);
+	ret = pp_create_cq_dv(&ppdv.ppc, &ppdv.cq[0], 0);
 	if (ret)
 		goto out_create_cq;
 
-	ret = pp_create_qp_dv(&ppdv.ppc, &ppdv.cq, &ppdv.qp);
+	ret = pp_create_qp_dv(&ppdv.ppc, &ppdv.cq[0], &ppdv.qp[0]);
 	if (ret)
 		goto out_create_qp;
 
-	ret = pp_exchange_info(&ppdv.ppc, client_sgid_idx, ppdv.qp.qpn,
+	ret = pp_exchange_info(&ppdv.ppc, client_sgid_idx, ppdv.qp[0].qpn,
 			       CLIENT_PSN, &server, SERVER_IP);
 	if (ret)
 		goto out_exchange;
 
-	ret = pp_move2rts_dv(&ppdv.ppc, &ppdv.qp, client_sgid_idx,
+	ret = pp_move2rts_dv(&ppdv.ppc, &ppdv.qp[0], client_sgid_idx,
 			     CLIENT_PSN, &server);
 	if (ret)
 		goto out_exchange;
 
-	ret = client_traffic_dv(&ppdv);
+	ret = client_traffic_dv(&ppdv, 0);
 
 out_exchange:
-	pp_destroy_qp_dv(&ppdv.qp);
+	pp_destroy_qp_dv(&ppdv.qp[0]);
 out_create_qp:
-	pp_destroy_cq_dv(&ppdv.cq);
+	pp_destroy_cq_dv(&ppdv.cq[0]);
 out_create_cq:
 	pp_ctx_cleanup(&ppdv.ppc);
 	return ret;
