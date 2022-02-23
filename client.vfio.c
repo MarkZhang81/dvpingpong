@@ -3,6 +3,7 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
+#include <semaphore.h>
 
 #include "ccan/ilog.h"
 
@@ -31,6 +32,13 @@ static struct mlx5_eq {
 	struct mlx5dv_devx_msi_vector *msi;
 	struct mlx5dv_devx_eq *dv_eq;
 } async_eq;
+
+/* sempaphore is used here to simply demostrate how the traffic thread
+ * and event thread are synchronized. It doesn't work if one eq are
+ * share by multiple CQs, as one semaphore signal doesn't tell which cq
+ * has the event. In this case need to use another way, e.g., pipe(2).
+ */
+static sem_t sem;
 
 static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 {
@@ -66,7 +74,10 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 	mmio_write64_be(((uint8_t *)async_eq.uar->base_addr + 0x20), *(__be64 *)doorbell);
 	printf("=DEBUG:%s:%d: ppdv->cq.uar->base_addr %p, async_eq.uar->base_addr %p\n", __func__, __LINE__, ppdv->cq.uar->base_addr, async_eq.uar->base_addr);
 #endif
+
 	while (num_comp < num_post) {
+		sem_wait(&sem);
+
 		/* FIXME: Need to wait for the event from the do_process_async_event() thread,
 		 *        otherwise not sure if there's any contention
 		 */
@@ -78,8 +89,6 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 		if (ret > 0)
 			num_comp++;
 
-		/* FIXME */
-		/*
 		cmd_sn = (cmd_sn + 1) & 3;
 		arm_ci = (arm_ci + 1) & 0xffffff;
 
@@ -89,7 +98,6 @@ static int client_traffic_dv(struct pp_dv_ctx *ppdv)
 		doorbell[0] = htobe32((cmd_sn << 28) | (cmd << 24) | arm_ci);
 		doorbell[1] = htobe32(ppdv->cq.cqn);
 		mmio_write64_be(((uint8_t *)async_eq.uar->base_addr + 0x20), *(__be64 *)doorbell);
-		*/
 	}
 
 	/* Reset the buffer so that we can check it the received data is expected */
@@ -273,6 +281,7 @@ static void process_event_comp(struct mlx5_eqe *eqe)
 {
 	printf("=DEBUG:%s:%d: Received cq comp event (sub_type %d) for cq %d........\n", __func__, __LINE__,
 	       eqe->sub_type, be32toh(eqe->data.comp.cqn));
+	sem_post(&sem);
 }
 
 static void process_event_port_state_change(struct mlx5_eqe *eqe)
@@ -399,6 +408,8 @@ static int setup_async_eq(struct pp_context *ppc)
 	}
 
 	eq_update_ci(&async_eq, 0, 1);
+
+	sem_init(&sem, 0, 0);
 	return 0;
 
 fail_create_eq:
